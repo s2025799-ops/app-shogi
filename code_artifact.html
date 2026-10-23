@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>アプリアイコン将棋</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "SF Pro Text", "Hiragino Kaku Gothic ProN", sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+            overflow: hidden;
+            background-color: #08080c;
+        }
+
+        /* 
+           =============================================================
+           ★【画像参照：壁紙】
+           ./images/wallpaper.jpg を優先表示し、画像がない場合は
+           iPadOS風グラデーションにフォールバックします。
+           =============================================================
+        */
+        .ipad-wallpaper {
+            background-image: url('./images/wallpaper.jpg'), linear-gradient(135deg, 
+                #282669 0%, 
+                #3b488d 25%, 
+                #e8eef5 50%, 
+                #29a383 75%, 
+                #0f6853 100%
+            );
+            background-size: cover;
+            background-position: center;
+        }
+
+        /* 
+           ★【9×9 盤面：絶対に変形・伸縮しない完全固定正方形グリッド】
+        */
+        #shogi-board {
+            display: grid;
+            grid-template-columns: repeat(9, minmax(0, 1fr));
+            grid-template-rows: repeat(9, minmax(0, 1fr));
+            aspect-ratio: 1 / 1;
+            width: 100%;
+            max-width: 460px;
+            box-sizing: border-box;
+        }
+
+        /* 各マス（セル）も 1:1 正方形で固定 */
+        .shogi-grid-cell {
+            aspect-ratio: 1 / 1;
+            width: 100%;
+            height: 100%;
+            border: 1px solid rgba(255, 255, 255, 0.08); /* 申し訳程度の薄いライン */
+            position: relative;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            transition: background-color 0.15s ease;
+        }
+
+        /* iPad風 アプリアイコン（完全正方形・Squircle形状） */
+        .app-icon-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            will-change: transform;
+            z-index: 10;
+        }
+
+        .app-icon-body {
+            border-radius: 22%; /* iOS標準 Squircle角丸 */
+            aspect-ratio: 1 / 1; /* 完全正方形 */
+            width: 78%;
+            max-width: 38px;
+            box-shadow: 0 3px 6px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.35);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            flex-shrink: 0;
+            overflow: hidden;
+            transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* 選択中の駒の発光エフェクト */
+        .app-icon-container.selected .app-icon-body {
+            transform: scale(1.12);
+            box-shadow: 0 0 0 3px #f59e0b, 0 6px 14px rgba(0, 0, 0, 0.5);
+            z-index: 30;
+        }
+
+        /* 後手（相手）の駒：180度回転 */
+        .gote-piece {
+            transform: rotate(180deg);
+        }
+
+        /* 移動・打込みターゲット表示 */
+        .move-target::after {
+            content: '';
+            position: absolute;
+            width: 26%;
+            height: 26%;
+            background-color: rgba(16, 185, 129, 0.85);
+            border-radius: 50%;
+            box-shadow: 0 0 8px #10b981;
+            animation: pulse-target 1.2s infinite ease-in-out;
+            pointer-events: none;
+        }
+        .capture-target {
+            background-color: rgba(239, 68, 68, 0.35) !important;
+            border-radius: 6px;
+        }
+
+        @keyframes pulse-target {
+            0%, 100% { transform: scale(0.85); opacity: 0.6; }
+            50% { transform: scale(1.15); opacity: 1; }
+        }
+
+        /* 成り PRO/MAX バッジ */
+        .pro-badge {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #ffffff;
+            font-size: 5.5px;
+            font-weight: 800;
+            padding: 1px 2.5px;
+            border-radius: 3px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+            border: 0.5px solid rgba(255,255,255,0.8);
+            line-height: 1;
+        }
+
+        /* iPadOS風すりガラス Dock (左側スリム縦長バー) */
+        .ipad-vertical-dock {
+            background: rgba(255, 255, 255, 0.22);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+        }
+
+        /* スクロールバー非表示 */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="w-screen h-screen flex items-center justify-center p-1 sm:p-3">
+
+    <!-- iPad本体フレーム（縦長 3:4 アスペクト比・短い辺が上下） -->
+    <div class="relative w-full max-w-[580px] h-full max-h-[773px] aspect-[3/4] md:rounded-[38px] border-[8px] md:border-[12px] border-slate-900 shadow-2xl overflow-hidden flex flex-col ipad-wallpaper">
+
+        <!-- 1. 上部 ステータスバー -->
+        <header class="w-full px-4 py-1.5 flex items-center justify-between text-white text-[11px] font-medium z-30 select-none drop-shadow shrink-0">
+            <!-- 写真どおりの時刻・日付表示 -->
+            <div id="status-time" class="tracking-tight opacity-90 font-semibold text-[10px] sm:text-xs">11:48 10月23日(金)</div>
+            
+            <!-- 右上：コントロール（ピルボタン） -->
+            <div class="flex items-center gap-1.5 sm:gap-2">
+                <!-- 💡 駒ガイド（ヒント）ボタン -->
+                <button onclick="openGuideModal()" class="flex items-center gap-1 bg-amber-500/90 hover:bg-amber-400 text-slate-950 font-extrabold px-2 py-0.5 rounded-full border border-amber-300 text-[9px] sm:text-[10px] shadow transition">
+                    <i class="fa-solid fa-lightbulb text-amber-950"></i>
+                    <span>駒ガイド</span>
+                </button>
+
+                <!-- 手番＆モード切替 -->
+                <div class="flex items-center gap-1.5 bg-black/30 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/10 text-[9px] sm:text-[10px]">
+                    <span id="turn-indicator" class="text-amber-300 font-bold">▲先手</span>
+                    <select id="game-mode-select" onchange="changeGameMode(this.value)" class="bg-transparent text-white focus:outline-none cursor-pointer">
+                        <option value="cpu" class="bg-slate-800 text-white">VS CPU</option>
+                        <option value="pvp" class="bg-slate-800 text-white">2人対局</option>
+                    </select>
+                    <button onclick="resetGame()" title="リセット" class="hover:text-amber-300 transition ml-0.5">
+                        <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                </div>
+
+                <!-- Wi-Fi & バッテリー -->
+                <div class="flex items-center gap-1 opacity-80 text-[10px]">
+                    <i class="fa-solid fa-wifi"></i>
+                    <i class="fa-solid fa-battery-full text-emerald-300"></i>
+                </div>
+            </div>
+        </header>
+
+        <!-- 2. メインコンテンツ（左：スリム縦型Dock / 右：固定9x9将棋盤） -->
+        <div class="flex-1 flex items-center justify-center p-2 gap-2 sm:gap-3 overflow-hidden">
+            
+            <!-- 左側1本：スリム縦型 Dockバー（持ち駒置き場・中央分割） -->
+            <aside class="ipad-vertical-dock w-11 sm:w-14 md:w-16 h-[95%] rounded-2xl flex flex-col justify-between items-center py-2 px-1 z-20 shrink-0">
+                
+                <!-- 上半分：後手（相手/CPU）持ち駒エリア -->
+                <div class="w-full flex flex-col items-center flex-1 overflow-hidden">
+                    <span class="text-[7px] sm:text-[8px] text-white/70 font-bold tracking-tight mb-1 truncate">後手Dock</span>
+                    <div id="gote-komadai" class="w-full flex-1 flex flex-col items-center gap-1 overflow-y-auto no-scrollbar py-0.5">
+                        <!-- 後手の持ち駒が入ります -->
+                    </div>
+                </div>
+
+                <!-- 中央：セパレーター -->
+                <div class="w-3/4 h-[1px] bg-white/30 my-1 shrink-0"></div>
+
+                <!-- 下半分（手前）：先手（自分）持ち駒エリア -->
+                <div class="w-full flex flex-col items-center flex-1 overflow-hidden">
+                    <div id="sente-komadai" class="w-full flex-1 flex flex-col items-center gap-1 overflow-y-auto no-scrollbar py-0.5">
+                        <!-- 先手（自分）の持ち駒が入ります -->
+                    </div>
+                    <span class="text-[7px] sm:text-[8px] text-white/90 font-bold tracking-tight mt-1 truncate">自分Dock</span>
+                </div>
+
+            </aside>
+
+            <!-- 右側：完全正方形で固定された9×9 アプリアイコン将棋盤 -->
+            <main class="flex-1 flex items-center justify-center h-full z-10 overflow-hidden">
+                <div id="shogi-board" class="rounded-lg select-none">
+                    <!-- JSで81マス自動生成（全セル完全正方形1:1固定） -->
+                </div>
+            </main>
+
+        </div>
+
+        <!-- iPad ホームバー -->
+        <div class="w-24 sm:w-32 h-1 bg-white/60 rounded-full mx-auto mb-1 shrink-0"></div>
+
+    </div>
+
+    <!-- モーダル：💡 アプリ ✕ 将棋駒ガイド (対応表) -->
+    <div id="guide-modal" class="hidden fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-3">
+        <div class="bg-slate-900/95 border border-slate-700/80 rounded-3xl p-4 sm:p-5 max-w-sm w-full text-white shadow-2xl flex flex-col max-h-[85vh]">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-xl">💡</span>
+                    <h3 class="font-bold text-sm sm:text-base">アプリ ⇄ 将棋の駒 対応表</h3>
+                </div>
+                <button onclick="closeGuideModal()" class="text-slate-400 hover:text-white p-1">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            
+            <div class="overflow-y-auto flex-1 pr-1 text-xs space-y-2">
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/50 flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-teal-500 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                        <i class="fa-solid fa-graduation-cap"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-bold text-amber-300">Classi ＝ 【歩兵】</div>
+                        <div class="text-[10px] text-slate-300 truncate">成ると Classi PRO (と金)</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/50 flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                        <i class="fa-solid fa-location-dot"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-bold text-amber-300">Google Maps ＝ 【香車】</div>
+                        <div class="text-[10px] text-slate-300 truncate">成ると Maps PRO (成香)</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/50 flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-teal-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                        <i class="fa-solid fa-location-arrow"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-bold text-amber-300">マップ ＝ 【桂馬】</div>
+                        <div class="text-[10px] text-slate-300 truncate">成ると マップ PRO (成桂)</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/50 flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                        <i class="fa-solid fa-square-poll-vertical"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-bold text-amber-300">スライド ＝ 【銀将】</div>
+                        <div class="text-[10px] text-slate-300 truncate">成ると スライド PRO (成銀)</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/50 flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-pink-500 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                        <i class="fa-solid fa-photo-film"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-bold text-amber-300">写真 / フォト ＝ 【金将】</div>
+                        <div class="text-[10px] text-slate-300 truncate">成らない</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/50 flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                        <i class="fa-regular fa-compass"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-bold text-amber-300">Safari ＝ 【飛車】</div>
+                        <div class="text-[10px] text-slate-300 truncate">成ると Safari MAX (龍)</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/50 flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-slate-200 text-blue-500 flex items-center justify-center font-bold text-sm shrink-0">
+                        <i class="fa-brands fa-google"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-bold text-amber-300">Google ＝ 【角行】</div>
+                        <div class="text-[10px] text-slate-300 truncate">成ると Google PRO (馬)</div>
+                    </div>
+                </div>
+
+                <div class="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700/50 flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-slate-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
+                        <i class="fa-solid fa-gear"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="font-bold text-red-400">設定 ＝ 【王将 / 玉将】</div>
+                        <div class="text-[10px] text-slate-300 truncate">取られるとゲームオーバー！</div>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="closeGuideModal()" class="w-full mt-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold py-2 rounded-xl text-xs transition">
+                理解した！対局に戻る
+            </button>
+        </div>
+    </div>
+
+    <!-- モーダル：バージョンアップ（成り） -->
+    <div id="promote-modal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900/90 border border-slate-700/80 rounded-3xl p-5 max-w-xs w-full text-center shadow-2xl text-white">
+            <div class="text-3xl mb-2">🚀</div>
+            <h3 class="text-base font-bold mb-1">アプリをバージョンアップ？</h3>
+            <p class="text-xs text-slate-300 mb-5">Pro / Max 版へアップデート（成る）しますか？</p>
+            <div class="flex gap-2">
+                <button onclick="handlePromoteChoice(true)" class="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold py-2 rounded-xl text-xs transition">
+                    アップデート
+                </button>
+                <button onclick="handlePromoteChoice(false)" class="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-xl text-xs transition">
+                    そのまま
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- モーダル：勝敗お知らせ -->
+    <div id="notice-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900/95 border border-slate-700 rounded-3xl p-5 max-w-xs w-full text-center shadow-2xl text-white">
+            <div id="notice-icon" class="text-4xl mb-2">💥</div>
+            <h3 id="notice-title" class="text-base font-bold mb-1">対局終了</h3>
+            <p id="notice-message" class="text-xs text-slate-300 mb-5">『設定』アプリが削除されました！</p>
+            <button onclick="closeNotice(); resetGame();" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2 rounded-xl text-xs transition">
+                もう一度遊ぶ
+            </button>
+        </div>
+    </div>
+
+    <script>
+        /* 
+           =============================================================
+           ★【実画像パス設定 & 自動フォールバック構造】
+           `./images/` フォルダ内に以下の画像を置くことで実際の画像が表示されます。
+           画像が無い場合でも `onerror` 処理により動的に代替アイコンが表示されます。
+           =============================================================
+        */
+        const PIECE_CONFIG = {
+            // 王将/玉将 ＝ 『設定 (setting.png)』
+            'OU': {
+                name: '設定',
+                promotedName: '設定',
+                icon: 'fa-solid fa-gear',
+                bg: 'bg-gradient-to-tr from-slate-400 via-slate-500 to-slate-700',
+                color: 'text-white',
+                imgUrl: './images/setting.png'
+            },
+            // 飛車 ＝ 『Safari (safari.png)』
+            'HI': {
+                name: 'Safari',
+                promotedName: 'Safari Max',
+                icon: 'fa-regular fa-compass',
+                bg: 'bg-gradient-to-tr from-sky-300 via-blue-500 to-blue-600',
+                color: 'text-white',
+                imgUrl: './images/safari.png'
+            },
+            // 角行 ＝ 『Google (google.png)』
+            'KA': {
+                name: 'Google',
+                promotedName: 'Google Pro',
+                icon: 'fa-brands fa-google',
+                bg: 'bg-gradient-to-tr from-slate-100 via-slate-200 to-slate-300',
+                color: 'text-blue-500',
+                imgUrl: './images/google.png'
+            },
+            // 金将 ＝ 『写真 (photos.png)』
+            'KI': {
+                name: '写真',
+                promotedName: '写真',
+                icon: 'fa-solid fa-photo-film',
+                bg: 'bg-gradient-to-tr from-rose-400 via-pink-400 to-yellow-300',
+                color: 'text-white',
+                imgUrl: './images/photos.png'
+            },
+            // 銀将 ＝ 『スライド (slides.png)』
+            'GI': {
+                name: 'スライド',
+                promotedName: 'スライド Pro',
+                icon: 'fa-solid fa-square-poll-vertical',
+                bg: 'bg-gradient-to-tr from-amber-400 to-amber-500',
+                color: 'text-white',
+                imgUrl: './images/slides.png'
+            },
+            // 桂馬 ＝ 『マップ (maps.png)』
+            'KE': {
+                name: 'マップ',
+                promotedName: 'マップ Pro',
+                icon: 'fa-solid fa-location-arrow',
+                bg: 'bg-gradient-to-tr from-emerald-400 via-teal-500 to-blue-500',
+                color: 'text-white',
+                imgUrl: './images/maps.png'
+            },
+            // 香車 ＝ 『Google Maps (google_maps.png)』
+            'KY': {
+                name: 'Google Maps',
+                promotedName: 'Maps Pro',
+                icon: 'fa-solid fa-location-dot',
+                bg: 'bg-gradient-to-tr from-emerald-500 via-teal-600 to-sky-600',
+                color: 'text-white',
+                imgUrl: './images/google_maps.png'
+            },
+            // 歩兵 ＝ 『Classi (classi.png)』
+            'FU': {
+                name: 'Classi',
+                promotedName: 'Classi Pro',
+                icon: 'fa-solid fa-graduation-cap',
+                bg: 'bg-gradient-to-tr from-teal-400 to-emerald-600',
+                color: 'text-white',
+                imgUrl: './images/classi.png'
+            }
+        };
+
+        const SENTE = 1; // 先手 (自分)
+        const GOTE = 2;  // 後手 (相手/CPU)
+
+        let board = Array(9).fill(null).map(() => Array(9).fill(null));
+        let komadai = { [SENTE]: [], [GOTE]: [] };
+        let turn = SENTE;
+        let gameMode = 'cpu';
+        let selectedCell = null;
+        let validMoves = [];
+        let pendingPromoteMove = null;
+
+        // 時計表示の更新
+        function updateClock() {
+            const now = new Date();
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const month = now.getMonth() + 1;
+            const date = now.getDate();
+            const days = ['日', '月', '火', '水', '木', '金', '土'];
+            const dayStr = days[now.getDay()];
+            document.getElementById('status-time').textContent = `${hours}:${minutes} ${month}月${date}日(${dayStr})`;
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        function initGame() {
+            board = Array(9).fill(null).map(() => Array(9).fill(null));
+            komadai = { [SENTE]: [], [GOTE]: [] };
+            turn = SENTE;
+            selectedCell = null;
+            validMoves = [];
+
+            // 後手 (row 0~2)
+            setupRow(0, GOTE, ['KY', 'KE', 'GI', 'KI', 'OU', 'KI', 'GI', 'KE', 'KY']);
+            board[1][7] = { type: 'HI', owner: GOTE, isPromoted: false }; // 8筋
+            board[1][1] = { type: 'KA', owner: GOTE, isPromoted: false }; // 2筋
+            for(let c=0; c<9; c++) board[2][c] = { type: 'FU', owner: GOTE, isPromoted: false };
+
+            // 先手 (row 6~8)
+            for(let c=0; c<9; c++) board[6][c] = { type: 'FU', owner: SENTE, isPromoted: false };
+            board[7][1] = { type: 'HI', owner: SENTE, isPromoted: false }; // 8筋
+            board[7][7] = { type: 'KA', owner: SENTE, isPromoted: false }; // 2筋
+            setupRow(8, SENTE, ['KY', 'KE', 'GI', 'KI', 'OU', 'KI', 'GI', 'KE', 'KY']);
+
+            renderBoard();
+            renderKomadai();
+            updateTurnDisplay();
+        }
+
+        function setupRow(row, owner, types) {
+            for(let col = 0; col < 9; col++) {
+                board[row][col] = { type: types[col], owner: owner, isPromoted: false };
+            }
+        }
+
+        function renderBoard() {
+            const boardEl = document.getElementById('shogi-board');
+            boardEl.innerHTML = '';
+
+            for (let r = 0; r < 9; r++) {
+                for (let c = 0; c < 9; c++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'shogi-grid-cell';
+                    cell.onclick = () => onCellClick(r, c);
+
+                    if (selectedCell && !selectedCell.fromKomadai && selectedCell.row === r && selectedCell.col === c) {
+                        cell.classList.add('bg-amber-300/20');
+                    }
+
+                    const isTarget = validMoves.some(m => m.row === r && m.col === c);
+                    if (isTarget) {
+                        if (board[r][c] !== null) {
+                            cell.classList.add('capture-target');
+                        } else {
+                            cell.classList.add('move-target');
+                        }
+                    }
+
+                    const piece = board[r][c];
+                    if (piece) {
+                        const isSelected = selectedCell && !selectedCell.fromKomadai && selectedCell.row === r && selectedCell.col === c;
+                        cell.appendChild(createAppPieceElement(piece, isSelected));
+                    }
+
+                    boardEl.appendChild(cell);
+                }
+            }
+        }
+
+        // アプリアイコンエレメントの生成（実画像 ＋ onerror フォールバック）
+        function createAppPieceElement(piece, isSelected = false) {
+            const config = PIECE_CONFIG[piece.type];
+            const isSente = piece.owner === SENTE;
+            const appName = piece.isPromoted ? config.promotedName : config.name;
+
+            const container = document.createElement('div');
+            container.className = `app-icon-container ${isSente ? '' : 'gote-piece'} ${isSelected ? 'selected' : ''}`;
+
+            const iconBox = document.createElement('div');
+            iconBox.className = `app-icon-body ${config.bg}`;
+
+            // 画像とフォールバックの構造
+            const imgEl = document.createElement('img');
+            imgEl.src = config.imgUrl;
+            imgEl.alt = appName;
+            imgEl.className = 'w-full h-full object-cover rounded-[22%]';
+            
+            const fallbackEl = document.createElement('div');
+            fallbackEl.className = 'w-full h-full flex items-center justify-center hidden';
+            fallbackEl.innerHTML = `<i class="${config.icon} ${config.color} text-[10px] sm:text-xs drop-shadow"></i>`;
+
+            imgEl.onerror = function() {
+                this.style.display = 'none';
+                fallbackEl.classList.remove('hidden');
+            };
+
+            iconBox.appendChild(imgEl);
+            iconBox.appendChild(fallbackEl);
+
+            if (piece.isPromoted) {
+                const badge = document.createElement('div');
+                badge.className = 'absolute -top-1 -right-1 pro-badge z-10';
+                badge.textContent = piece.type === 'HI' ? 'MAX' : 'PRO';
+                iconBox.appendChild(badge);
+            }
+
+            const label = document.createElement('span');
+            label.className = 'text-[5.5px] sm:text-[7px] font-medium text-white tracking-tight truncate max-w-full mt-0.5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)] leading-none';
+            label.textContent = appName;
+
+            container.appendChild(iconBox);
+            container.appendChild(label);
+
+            return container;
+        }
+
+        // 左側スリム Dock (持ち駒) 描画
+        function renderKomadai() {
+            const senteEl = document.getElementById('sente-komadai');
+            const goteEl = document.getElementById('gote-komadai');
+
+            senteEl.innerHTML = '';
+            goteEl.innerHTML = '';
+
+            if (komadai[SENTE].length === 0) {
+                senteEl.innerHTML = `<span class="text-[7px] text-white/40 italic my-auto">（空）</span>`;
+            } else {
+                komadai[SENTE].forEach((type, index) => {
+                    senteEl.appendChild(createDockItem(type, SENTE, index));
+                });
+            }
+
+            if (komadai[GOTE].length === 0) {
+                goteEl.innerHTML = `<span class="text-[7px] text-white/40 italic my-auto">（空）</span>`;
+            } else {
+                komadai[GOTE].forEach((type, index) => {
+                    goteEl.appendChild(createDockItem(type, GOTE, index));
+                });
+            }
+        }
+
+        function createDockItem(type, owner, index) {
+            const config = PIECE_CONFIG[type];
+            const isSelected = selectedCell && selectedCell.fromKomadai && selectedCell.owner === owner && selectedCell.index === index;
+
+            const btn = document.createElement('button');
+            btn.className = `app-icon-container flex flex-col items-center justify-center cursor-pointer transition ${owner === GOTE ? 'gote-piece' : ''} ${isSelected ? 'selected' : ''}`;
+
+            const iconBox = document.createElement('div');
+            iconBox.className = `app-icon-body w-6 sm:w-8 aspect-square ${config.bg}`;
+
+            const imgEl = document.createElement('img');
+            imgEl.src = config.imgUrl;
+            imgEl.className = 'w-full h-full object-cover rounded-[22%]';
+
+            const fallbackEl = document.createElement('div');
+            fallbackEl.className = 'w-full h-full flex items-center justify-center hidden';
+            fallbackEl.innerHTML = `<i class="${config.icon} ${config.color} text-[9px] sm:text-xs"></i>`;
+
+            imgEl.onerror = function() {
+                this.style.display = 'none';
+                fallbackEl.classList.remove('hidden');
+            };
+
+            iconBox.appendChild(imgEl);
+            iconBox.appendChild(fallbackEl);
+
+            btn.appendChild(iconBox);
+
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                onKomadaiClick(owner, type, index);
+            };
+
+            return btn;
+        }
+
+        function onCellClick(r, c) {
+            if (turn === GOTE && gameMode === 'cpu') return;
+
+            const clickedPiece = board[r][c];
+
+            // 1. 持ち駒の打込み
+            if (selectedCell && selectedCell.fromKomadai) {
+                if (validMoves.some(m => m.row === r && m.col === c)) {
+                    dropPieceWithAnimation(selectedCell.pieceType, selectedCell.owner, selectedCell.index, r, c);
+                } else {
+                    clearSelection();
+                }
+                return;
+            }
+
+            // 2. 自分の駒選択
+            if (clickedPiece && clickedPiece.owner === turn) {
+                selectedCell = { row: r, col: c };
+                validMoves = getValidMoves(r, c, clickedPiece);
+                renderBoard();
+                return;
+            }
+
+            // 3. 移動確定
+            if (selectedCell && !selectedCell.fromKomadai) {
+                if (validMoves.some(m => m.row === r && m.col === c)) {
+                    executeMove(selectedCell.row, selectedCell.col, r, c);
+                } else {
+                    clearSelection();
+                }
+            }
+        }
+
+        function onKomadaiClick(owner, pieceType, index) {
+            if (owner !== turn) return;
+            if (turn === GOTE && gameMode === 'cpu') return;
+
+            selectedCell = { fromKomadai: true, owner, pieceType, index };
+            validMoves = getValidDrops(owner, pieceType);
+            renderBoard();
+            renderKomadai();
+        }
+
+        function clearSelection() {
+            selectedCell = null;
+            validMoves = [];
+            renderBoard();
+            renderKomadai();
+        }
+
+        function getCellElement(r, c) {
+            const boardEl = document.getElementById('shogi-board');
+            if (!boardEl) return null;
+            const index = r * 9 + c;
+            return boardEl.children[index] || null;
+        }
+
+        // FLIP移動アニメーション
+        function animatePieceMove(fromR, fromC, toR, toC, onComplete) {
+            const fromCell = getCellElement(fromR, fromC);
+            const pieceEl = fromCell ? fromCell.querySelector('.app-icon-container') : null;
+
+            if (!pieceEl) {
+                onComplete();
+                return;
+            }
+
+            const fromRect = pieceEl.getBoundingClientRect();
+            onComplete();
+
+            const toCell = getCellElement(toR, toC);
+            const newPieceEl = toCell ? toCell.querySelector('.app-icon-container') : null;
+
+            if (newPieceEl) {
+                const toRect = newPieceEl.getBoundingClientRect();
+                const deltaX = fromRect.left - toRect.left;
+                const deltaY = fromRect.top - toRect.top;
+
+                const isGote = newPieceEl.classList.contains('gote-piece');
+                const rotateCss = isGote ? 'rotate(180deg)' : '';
+
+                newPieceEl.style.transition = 'none';
+                newPieceEl.style.transform = `translate(${deltaX}px, ${deltaY}px) ${rotateCss}`;
+                newPieceEl.style.zIndex = '100';
+
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        newPieceEl.style.transition = 'transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)';
+                        newPieceEl.style.transform = `translate(0, 0) ${rotateCss}`;
+                        setTimeout(() => {
+                            newPieceEl.style.transition = '';
+                            newPieceEl.style.transform = '';
+                            newPieceEl.style.zIndex = '';
+                        }, 360);
+                    });
+                });
+            }
+        }
+
+        function executeMove(fromR, fromC, toR, toC) {
+            const piece = board[fromR][fromC];
+            const isEnemyZone = (piece.owner === SENTE && toR <= 2) || (piece.owner === GOTE && toR >= 6) ||
+                                (piece.owner === SENTE && fromR <= 2) || (piece.owner === GOTE && fromR >= 6);
+
+            const canPromote = !piece.isPromoted && PIECE_CONFIG[piece.type].promotedName !== PIECE_CONFIG[piece.type].name && isEnemyZone;
+
+            const mustPromote = canPromote && (
+                (piece.type === 'FU' || piece.type === 'KY') && (piece.owner === SENTE ? toR === 0 : toR === 8) ||
+                (piece.type === 'KE') && (piece.owner === SENTE ? toR <= 1 : toR >= 7)
+            );
+
+            if (mustPromote) {
+                applyMove(fromR, fromC, toR, toC, true);
+            } else if (canPromote) {
+                if (turn === SENTE || gameMode === 'pvp') {
+                    pendingPromoteMove = { fromR, fromC, toR, toC };
+                    document.getElementById('promote-modal').classList.remove('hidden');
+                } else {
+                    applyMove(fromR, fromC, toR, toC, true);
+                }
+            } else {
+                applyMove(fromR, fromC, toR, toC, false);
+            }
+        }
+
+        function handlePromoteChoice(doPromote) {
+            document.getElementById('promote-modal').classList.add('hidden');
+            if (pendingPromoteMove) {
+                const { fromR, fromC, toR, toC } = pendingPromoteMove;
+                applyMove(fromR, fromC, toR, toC, doPromote);
+                pendingPromoteMove = null;
+            }
+        }
+
+        function applyMove(fromR, fromC, toR, toC, promote) {
+            animatePieceMove(fromR, fromC, toR, toC, () => {
+                const piece = board[fromR][fromC];
+                const targetPiece = board[toR][toC];
+
+                if (targetPiece) {
+                    komadai[piece.owner].push(targetPiece.type);
+
+                    if (targetPiece.type === 'OU') {
+                        board[toR][toC] = {
+                            type: piece.type,
+                            owner: piece.owner,
+                            isPromoted: piece.isPromoted || promote
+                        };
+                        board[fromR][fromC] = null;
+                        renderBoard();
+                        renderKomadai();
+                        setTimeout(() => {
+                            const winner = piece.owner === SENTE ? '▲ 先手' : '△ 後手';
+                            showNotice('対局終了！', `${winner} が相手の『設定』アプリを削除しました！`, '🏆');
+                        }, 200);
+                        return;
+                    }
+                }
+
+                board[toR][toC] = {
+                    type: piece.type,
+                    owner: piece.owner,
+                    isPromoted: piece.isPromoted || promote
+                };
+                board[fromR][fromC] = null;
+
+                renderBoard();
+                renderKomadai();
+                endTurn();
+            });
+        }
+
+        function dropPieceWithAnimation(pieceType, owner, index, toR, toC) {
+            const dockContainer = document.getElementById(owner === SENTE ? 'sente-komadai' : 'gote-komadai');
+            const dockItem = dockContainer ? dockContainer.children[index] : null;
+            const fromRect = dockItem ? dockItem.getBoundingClientRect() : null;
+
+            dropPiece(pieceType, owner, index, toR, toC);
+            clearSelection();
+            renderBoard();
+            renderKomadai();
+
+            if (fromRect) {
+                const toCell = getCellElement(toR, toC);
+                const newPieceEl = toCell ? toCell.querySelector('.app-icon-container') : null;
+
+                if (newPieceEl) {
+                    const toRect = newPieceEl.getBoundingClientRect();
+                    const deltaX = fromRect.left - toRect.left;
+                    const deltaY = fromRect.top - toRect.top;
+
+                    const isGote = owner === GOTE;
+                    const rotateCss = isGote ? 'rotate(180deg)' : '';
+
+                    newPieceEl.style.transition = 'none';
+                    newPieceEl.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(0.6) ${rotateCss}`;
+                    newPieceEl.style.zIndex = '100';
+
+                    requestAnimationFrame(() => {
+                        requestAnimationFrame(() => {
+                            newPieceEl.style.transition = 'transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)';
+                            newPieceEl.style.transform = `translate(0, 0) scale(1) ${rotateCss}`;
+                            setTimeout(() => {
+                                newPieceEl.style.transition = '';
+                                newPieceEl.style.transform = '';
+                                newPieceEl.style.zIndex = '';
+                            }, 360);
+                        });
+                    });
+                }
+            }
+            endTurn();
+        }
+
+        function dropPiece(pieceType, owner, index, toR, toC) {
+            board[toR][toC] = {
+                type: pieceType,
+                owner: owner,
+                isPromoted: false
+            };
+            komadai[owner].splice(index, 1);
+        }
+
+        function endTurn() {
+            clearSelection();
+            turn = (turn === SENTE) ? GOTE : SENTE;
+            updateTurnDisplay();
+
+            if (turn === GOTE && gameMode === 'cpu') {
+                setTimeout(makeCpuMove, 450);
+            }
+        }
+
+        function updateTurnDisplay() {
+            const ind = document.getElementById('turn-indicator');
+            if (turn === SENTE) {
+                ind.textContent = '▲先手';
+                ind.className = 'text-amber-300 font-bold';
+            } else {
+                ind.textContent = '△後手';
+                ind.className = 'text-sky-300 font-bold';
+            }
+        }
+
+        function getValidMoves(r, c, piece) {
+            const moves = [];
+            const dir = piece.owner === SENTE ? -1 : 1;
+
+            const addMove = (nr, nc) => {
+                if (nr < 0 || nr >= 9 || nc < 0 || nc >= 9) return false;
+                const target = board[nr][nc];
+                if (target === null) {
+                    moves.push({ row: nr, col: nc });
+                    return true;
+                } else if (target.owner !== piece.owner) {
+                    moves.push({ row: nr, col: nc });
+                    return false;
+                }
+                return false;
+            };
+
+            const addRay = (dr, dc) => {
+                let nr = r + dr;
+                let nc = c + dc;
+                while (nr >= 0 && nr < 9 && nc >= 0 && nc < 9) {
+                    if (!addMove(nr, nc)) break;
+                    nr += dr;
+                    nc += dc;
+                }
+            };
+
+            if (piece.isPromoted && ['FU', 'KY', 'KE', 'GI'].includes(piece.type)) {
+                const goldMoves = [[dir, 0], [dir, -1], [dir, 1], [0, -1], [0, 1], [-dir, 0]];
+                goldMoves.forEach(([dr, dc]) => addMove(r + dr, c + dc));
+                return moves;
+            }
+
+            switch (piece.type) {
+                case 'FU': addMove(r + dir, c); break;
+                case 'KY': addRay(dir, 0); break;
+                case 'KE':
+                    addMove(r + dir * 2, c - 1);
+                    addMove(r + dir * 2, c + 1);
+                    break;
+                case 'GI':
+                    [[dir, 0], [dir, -1], [dir, 1], [-dir, -1], [-dir, 1]].forEach(([dr, dc]) => addMove(r + dr, c + dc));
+                    break;
+                case 'KI':
+                    [[dir, 0], [dir, -1], [dir, 1], [0, -1], [0, 1], [-dir, 0]].forEach(([dr, dc]) => addMove(r + dr, c + dc));
+                    break;
+                case 'OU':
+                    for (let dr = -1; dr <= 1; dr++) {
+                        for (let dc = -1; dc <= 1; dc++) {
+                            if (dr !== 0 || dc !== 0) addMove(r + dr, c + dc);
+                        }
+                    }
+                    break;
+                case 'HI':
+                    addRay(-1, 0); addRay(1, 0); addRay(0, -1); addRay(0, 1);
+                    if (piece.isPromoted) [[-1,-1], [-1,1], [1,-1], [1,1]].forEach(([dr, dc]) => addMove(r + dr, c + dc));
+                    break;
+                case 'KA':
+                    addRay(-1, -1); addRay(-1, 1); addRay(1, -1); addRay(1, 1);
+                    if (piece.isPromoted) [[-1,0], [1,0], [0,-1], [0,1]].forEach(([dr, dc]) => addMove(r + dr, c + dc));
+                    break;
+            }
+
+            return moves;
+        }
+
+        function getValidDrops(owner, pieceType) {
+            const drops = [];
+            const hasPawnInCol = (col) => {
+                for (let r = 0; r < 9; r++) {
+                    const p = board[r][col];
+                    if (p && p.owner === owner && p.type === 'FU' && !p.isPromoted) return true;
+                }
+                return false;
+            };
+
+            for (let r = 0; r < 9; r++) {
+                for (let c = 0; c < 9; c++) {
+                    if (board[r][c] === null) {
+                        if (pieceType === 'FU' || pieceType === 'KY') {
+                            if (owner === SENTE && r === 0) continue;
+                            if (owner === GOTE && r === 8) continue;
+                        }
+                        if (pieceType === 'KE') {
+                            if (owner === SENTE && r <= 1) continue;
+                            if (owner === GOTE && r >= 7) continue;
+                        }
+                        if (pieceType === 'FU' && hasPawnInCol(c)) continue;
+                        drops.push({ row: r, col: c });
+                    }
+                }
+            }
+            return drops;
+        }
+
+        function makeCpuMove() {
+            if (turn !== GOTE) return;
+            const allMoves = [];
+
+            for (let r = 0; r < 9; r++) {
+                for (let c = 0; c < 9; c++) {
+                    const piece = board[r][c];
+                    if (piece && piece.owner === GOTE) {
+                        const moves = getValidMoves(r, c, piece);
+                        moves.forEach(m => {
+                            let score = 0;
+                            const target = board[m.row][m.col];
+                            if (target) {
+                                const val = { FU: 1, KY: 3, KE: 3, GI: 5, KI: 6, KA: 8, HI: 10, OU: 100 };
+                                score += (val[target.type] || 1) * 10;
+                            }
+                            if (m.row >= 6 && !piece.isPromoted) score += 4;
+                            allMoves.push({ type: 'move', fromR: r, fromC: c, toR: m.row, toC: m.col, score });
+                        });
+                    }
+                }
+            }
+
+            komadai[GOTE].forEach((type, index) => {
+                const drops = getValidDrops(GOTE, type);
+                drops.forEach(d => {
+                    allMoves.push({ type: 'drop', pieceType: type, index, toR: d.row, toC: d.col, score: 1 });
+                });
+            });
+
+            if (allMoves.length === 0) {
+                showNotice('対局決着', '▲ 先手(あなた)の勝ちです！', '🏆');
+                return;
+            }
+
+            allMoves.sort((a, b) => b.score - a.score);
+            const topMoves = allMoves.filter(m => m.score === allMoves[0].score);
+            const bestMove = topMoves[Math.floor(Math.random() * topMoves.length)];
+
+            if (bestMove.type === 'move') {
+                executeMove(bestMove.fromR, bestMove.fromC, bestMove.toR, bestMove.toC);
+            } else {
+                dropPieceWithAnimation(bestMove.pieceType, GOTE, bestMove.index, bestMove.toR, bestMove.toC);
+            }
+        }
+
+        function openGuideModal() {
+            document.getElementById('guide-modal').classList.remove('hidden');
+        }
+
+        function closeGuideModal() {
+            document.getElementById('guide-modal').classList.add('hidden');
+        }
+
+        function changeGameMode(mode) {
+            gameMode = mode;
+            initGame();
+        }
+
+        function resetGame() {
+            initGame();
+        }
+
+        function showNotice(title, message, icon = '💥') {
+            document.getElementById('notice-icon').textContent = icon;
+            document.getElementById('notice-title').textContent = title;
+            document.getElementById('notice-message').textContent = message;
+            document.getElementById('notice-modal').classList.remove('hidden');
+        }
+
+        function closeNotice() {
+            document.getElementById('notice-modal').classList.add('hidden');
+        }
+
+        window.onload = function() {
+            initGame();
+        };
+    </script>
+</body>
+</html>
